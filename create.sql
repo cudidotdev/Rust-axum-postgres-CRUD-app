@@ -1,10 +1,11 @@
-# create user
+-- create user
 CREATE ROLE axum_postgres WITH LOGIN PASSWORD 'axum_postgres';
 
-#create database
+-- create database
 CREATE DATABASE axum_postgres WITH OWNER = 'axum_postgres';
 
-# create task table
+-- in your axum_postgres database
+-- create task table
 CREATE TABLE tasks (
   task_id SERIAL PRIMARY KEY,
   name VARCHAR NOT NULL,
