@@ -32,10 +32,8 @@ cd Rust-axum-postgres-CRUD-app
 
 2. Build binaries
    
-```
-
+```bash
 cargo build
-
 ```
 
 3. Database Configuration
@@ -71,10 +69,8 @@ SERVER_ADDRESS=127.0.0.1:7878
 
 4. Run the application
 Run the application with
-```
-
+```bash
 cargo run
-
 ```
 
 ## API Endpoints
