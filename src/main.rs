@@ -9,6 +9,7 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sqlx::{postgres::PgPoolOptions, PgPool};
+use tokio::net::TcpListener;
 
 #[tokio::main]
 async fn main() {
@@ -21,24 +22,30 @@ async fn main() {
 
   //create our database pool
   let db_pool = PgPoolOptions::new()
-    .max_connections(16)
+    .max_connections(64)
     .acquire_timeout(Duration::from_secs(5))
     .connect(&database_url)
     .await
     .expect("can't connect to database");
 
   //create our tcp listener
-  let listener = tokio::net::TcpListener::bind(server_address).await.unwrap();
+  let listener = TcpListener::bind(server_address)
+    .await
+    .expect("Could not create tcp listener");
+
+  println!("listening on {}", listener.local_addr().unwrap());
 
   // compose the routes
   let app = Router::new()
+    .route("/", get(|| async { "Hello world" }))
     .route("/tasks", get(get_tasks).post(create_task))
     .route("/tasks/:task_id", patch(update_task).delete(delete_task))
     .with_state(db_pool);
 
-  println!("listening on {}", listener.local_addr().unwrap());
-
-  axum::serve(listener, app).await.unwrap();
+  //serve the application
+  axum::serve(listener, app)
+    .await
+    .expect("Error serving application");
 }
 
 async fn get_tasks(
@@ -64,7 +71,7 @@ async fn create_task(
   State(db_pool): State<PgPool>,
   Json(task): Json<CreateTaskReq>,
 ) -> Result<(StatusCode, String), (StatusCode, String)> {
-  let rows = sqlx::query_as!(
+  let row = sqlx::query_as!(
     CreateTaskRow,
     "INSERT INTO tasks (name, priority) VALUES ($1, $2) RETURNING task_id",
     task.name,
@@ -81,7 +88,7 @@ async fn create_task(
 
   Ok((
     StatusCode::CREATED,
-    json!({"success": true, "data": rows}).to_string(),
+    json!({"success": true, "data": row}).to_string(),
   ))
 }
 
@@ -90,20 +97,32 @@ async fn update_task(
   Path(task_id): Path<i32>,
   Json(task): Json<UpdateTaskReq>,
 ) -> Result<(StatusCode, String), (StatusCode, String)> {
-  sqlx::query_as!(
-    CreateTask,
-    "WITH t AS (SELECT * FROM tasks WHERE task_id = $1)
-     UPDATE tasks SET
-      name = CASE WHEN $2 = 'X-SKIP' THEN (SELECT name FROM t) ELSE $2 END,  
-      priority = CASE WHEN $3 = -1 THEN (SELECT priority FROM t) WHEN $3 = 0 THEN NULL ELSE $3 END  
-      WHERE task_id = $1",
-    task_id,
-    task.name.unwrap_or("X-SKIP".to_owned()),
-    task.priority.unwrap_or(-1)
-  )
-  .execute(&db_pool)
-  .await
-  .map_err(|e| {
+  let mut query = "UPDATE tasks SET task_id = $1".to_owned();
+
+  let mut i = 2;
+
+  if task.name.is_some() {
+    query.push_str(&format!(", name = ${i}"));
+    i = i + 1;
+  };
+
+  if task.priority.is_some() {
+    query.push_str(&format!(", priority = ${i}"));
+  };
+
+  query.push_str(&format!(" WHERE task_id = $1"));
+
+  let mut s = sqlx::query(&query).bind(task_id);
+
+  if task.name.is_some() {
+    s = s.bind(task.name);
+  }
+
+  if task.priority.is_some() {
+    s = s.bind(task.priority);
+  }
+
+  s.execute(&db_pool).await.map_err(|e| {
     (
       StatusCode::INTERNAL_SERVER_ERROR,
       json!({"success": false, "message": e.to_string()}).to_string(),
@@ -117,7 +136,7 @@ async fn delete_task(
   State(db_pool): State<PgPool>,
   Path(task_id): Path<i32>,
 ) -> Result<(StatusCode, String), (StatusCode, String)> {
-  sqlx::query_as!(CreateTask, "DELETE FROM tasks WHERE task_id = $1", task_id,)
+  sqlx::query!("DELETE FROM tasks WHERE task_id = $1", task_id,)
     .execute(&db_pool)
     .await
     .map_err(|e| {
