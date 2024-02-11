@@ -2,6 +2,8 @@
 
 Hi, welcome to Axum-Postgres, a basic CRUD (Create, Read, Update, Delete) application built with Rust's Axum web framework and PostgreSQL. This project provides a simple API for managing tasks, demonstrating the integration of Axum with a PostgreSQL database.
 
+Here is the YouTube video associated with this repo: https://youtu.be/NJsTgmayHZY
+
 ## Table of Contents
 
 - [Prerequisites](#prerequisites)
